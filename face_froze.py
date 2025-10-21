@@ -30,7 +30,7 @@ class FaceRecognizer:
         self.db_last_modified = 0
         self.emotion_detector = EmotionDetector()  # Initialize emotion detector
         self._initialize_camera()
-        self._load_face_database()
+        self._load_face_database()  # Only load once at startup
     
     def _initialize_camera(self):
         """Initialize camera once and keep it open"""
@@ -53,7 +53,7 @@ class FaceRecognizer:
             return 0
     
     def _load_face_database(self):
-        """Load face database only if it has been modified"""
+        """Load face database once at startup"""
         database_file = DB_DIR / DB_FILE_NAME
 
         if not DB_DIR.exists():
@@ -71,31 +71,28 @@ class FaceRecognizer:
             return
 
         try:
-            current_modified = database_file.stat().st_mtime
-            if current_modified > self.db_last_modified:
-                logger.info("Loading face database (json)...")
-                with open(database_file, 'r', encoding='utf-8') as fh:
-                    data = json.load(fh)
+            logger.info("Loading face database (json)...")
+            with open(database_file, 'r', encoding='utf-8') as fh:
+                data = json.load(fh)
 
-                # data is dict: face_id -> list of encodings (each encoding is a list)
-                encodings = []
-                names = []
-                for face_id, enc_list in data.items():
-                    # ensure list
-                    if not isinstance(enc_list, list):
-                        continue
-                    for enc in enc_list:
-                        try:
-                            arr = np.array(enc, dtype=np.float64)
-                            encodings.append(arr)
-                            names.append(face_id)
-                        except Exception:
-                            logger.warning(f"Invalid encoding for {face_id}, skipping")
+            # data is dict: face_id -> list of encodings (each encoding is a list)
+            encodings = []
+            names = []
+            for face_id, enc_list in data.items():
+                # ensure list
+                if not isinstance(enc_list, list):
+                    continue
+                for enc in enc_list:
+                    try:
+                        arr = np.array(enc, dtype=np.float64)
+                        encodings.append(arr)
+                        names.append(face_id)
+                    except Exception:
+                        logger.warning(f"Invalid encoding for {face_id}, skipping")
 
-                self.known_face_encodings = encodings
-                self.known_face_names = names
-                self.db_last_modified = current_modified
-                logger.info(f"Loaded {len(self.known_face_names)} known face encodings (from {len(data)} ids)")
+            self.known_face_encodings = encodings
+            self.known_face_names = names
+            logger.info(f"Loaded {len(self.known_face_names)} known face encodings (from {len(data)} ids)")
         except Exception as e:
             logger.warning(f"Failed to load face database: {e}")
             self.known_face_encodings = []
@@ -216,9 +213,7 @@ class FaceRecognizer:
     
     def recognize_faces(self):
         """Fast face recognition with emotion detection"""
-        # Check if database needs reloading (only if files changed externally)
-        self._load_face_database()
-        
+        # No longer reloads database every call
         # Capture frame
         ret, frame = self.video_capture.read()
         if not ret:
